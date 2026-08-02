@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#05060a">
-<title>Flow — Mapas de Apresentação</title>
+<title>Flow — Minimal | Version 2.0.1</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
@@ -182,6 +182,18 @@ body.presenting #cmdbar,
 body.presenting #top-actions,
 body.presenting #fs-zone,
 body.presenting #logo{display:none!important;}
+
+/* controles/textos remanescentes da apresentação (contador, zoom, sair, badge)
+   somem sozinhos após alguns segundos sem movimento do mouse, e voltam ao mover o mouse */
+body.presenting #pcount,
+body.presenting #modeBadge,
+body.presenting #btn-present-exit{transition:opacity .4s ease;opacity:1;}
+body.presenting.ui-idle #pcount,
+body.presenting.ui-idle #modeBadge,
+body.presenting.ui-idle #btn-present-exit{opacity:0!important;pointer-events:none!important;}
+body.presenting.ui-idle,
+body.presenting.ui-idle #workspace,
+body.presenting.ui-idle .node{cursor:none!important;}
 
 /* ══════════════════════ MARCA / STATUS ══════════════════════ */
 #logo{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:100;
@@ -505,7 +517,7 @@ body.presenting #btn-present-exit{display:flex;}
     <div id="about-accent"></div>
     <button class="card-close" id="about-card-close">&#x2715;</button>
     <div id="about-name">César Santana</div>
-    <div id="about-role">Desenvolvedor · Flow</div>
+    <div id="about-role">Desenvolvedor</div>
     <div id="about-body">
       <div id="about-info">
         <div class="about-row">
@@ -536,7 +548,7 @@ body.presenting #btn-present-exit{display:flex;}
         </div>
       </div>
     </div>
-    <div id="about-footer"><span>Flow &mdash; Mapas de Apresentação</span><span>2026 &middot; v2.0</span></div>
+    <div id="about-footer"><span>Flow &mdash; Minimal</span><span>2026 &middot; v2.0.1</span></div>
   </div>
 </div>
 
@@ -672,7 +684,7 @@ body.presenting #btn-present-exit{display:flex;}
   <div id="viewport"><svg id="connections"></svg></div>
 </div>
 
-<div id="logo">flow</div>
+<div id="logo">flow minimal</div>
 <div id="modeBadge"><span class="dot"></span><span id="modeLabel">edição</span></div>
 <div id="pcount">
   <div id="pcount-row">
@@ -929,7 +941,11 @@ function touchDist(t){return Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t
 
 function fitAll(animate=true){
   const vis=nodes.filter(isVisible);
-  if(!vis.length){zoom=1;panX=60;panY=60;applyTransform();return;}
+  if(!vis.length){
+    if(animate)animateViewport(60,60,1);
+    else{zoom=1;panX=60;panY=60;applyTransform();}
+    return;
+  }
   let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
   vis.forEach(n=>{
     const el=viewport.querySelector(`.node[data-id="${n.id}"]`);
@@ -941,10 +957,33 @@ function fitAll(animate=true){
   const cw=workspace.clientWidth, ch=workspace.clientHeight;
   const w=maxX-minX+pad*2, h=maxY-minY+pad*2;
   const targetZoom=Math.min(1.15,Math.max(0.3,Math.min(cw/w,ch/h)));
-  zoom=targetZoom;
-  panX=cw/2-(minX+ (maxX-minX)/2)*zoom;
-  panY=ch/2-(minY+ (maxY-minY)/2)*zoom;
-  applyTransform();
+  const targetPanX=cw/2-(minX+ (maxX-minX)/2)*targetZoom;
+  const targetPanY=ch/2-(minY+ (maxY-minY)/2)*targetZoom;
+  if(animate){
+    animateViewport(targetPanX,targetPanY,targetZoom);
+  }else{
+    zoom=targetZoom; panX=targetPanX; panY=targetPanY; applyTransform();
+  }
+}
+
+/* anima suavemente o pan/zoom do viewport até um alvo */
+let viewportAnimFrame=null;
+function animateViewport(targetPanX,targetPanY,targetZoom,duration=520){
+  if(viewportAnimFrame)cancelAnimationFrame(viewportAnimFrame);
+  const startPanX=panX, startPanY=panY, startZoom=zoom;
+  const start=performance.now();
+  function easeInOutCubic(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+  function step(now){
+    const t=Math.min(1,(now-start)/duration);
+    const e=easeInOutCubic(t);
+    panX=startPanX+(targetPanX-startPanX)*e;
+    panY=startPanY+(targetPanY-startPanY)*e;
+    zoom=startZoom+(targetZoom-startZoom)*e;
+    applyTransform();
+    if(t<1){viewportAnimFrame=requestAnimationFrame(step);}
+    else{viewportAnimFrame=null;panX=targetPanX;panY=targetPanY;zoom=targetZoom;applyTransform();}
+  }
+  viewportAnimFrame=requestAnimationFrame(step);
 }
 
 function centerOnNode(n,zoomLevel){
@@ -976,6 +1015,54 @@ function layoutTree(){
     else{node.y=80+depth*GAP_MAIN;node.x=60+cross;}
   }
   nodes.filter(n=>!n.parentId).forEach(root=>{place(root,0);cursor+=GAP_CROSS*0.7;});
+}
+
+/* ══════════════════════════ REORGANIZAR COM ANIMAÇÃO ══════════════════════════ */
+let arrangeAnimFrame=null;
+function arrangeNodes(){
+  if(!nodes.length)return;
+  if(arrangeAnimFrame)cancelAnimationFrame(arrangeAnimFrame);
+
+  // posições atuais (ponto de partida da animação)
+  const oldPos=new Map(nodes.map(n=>[n.id,{x:n.x,y:n.y}]));
+
+  // calcula as posições-alvo em árvore, sem perder as posições atuais
+  layoutTree();
+  const newPos=new Map(nodes.map(n=>[n.id,{x:n.x,y:n.y}]));
+
+  // volta os nós para onde estavam e desenha o estado inicial
+  nodes.forEach(n=>{const o=oldPos.get(n.id); if(o){n.x=o.x;n.y=o.y;}});
+  render();
+
+  const duration=560;
+  const start=performance.now();
+  function easeInOutCubic(t){return t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+
+  function step(now){
+    const t=Math.min(1,(now-start)/duration);
+    const e=easeInOutCubic(t);
+    const visible=nodes.filter(isVisible);
+    visible.forEach(n=>{
+      const o=oldPos.get(n.id), target=newPos.get(n.id);
+      if(!o||!target)return;
+      n.x=o.x+(target.x-o.x)*e;
+      n.y=o.y+(target.y-o.y)*e;
+      const el=viewport.querySelector(`.node[data-id="${n.id}"]`);
+      if(el){el.style.left=n.x+'px'; el.style.top=n.y+'px';}
+    });
+    drawConnections(visible);
+    if(t<1){
+      arrangeAnimFrame=requestAnimationFrame(step);
+    }else{
+      arrangeAnimFrame=null;
+      // garante os valores exatos de destino ao final
+      nodes.forEach(n=>{const target=newPos.get(n.id); if(target){n.x=target.x;n.y=target.y;}});
+      drawConnections(nodes.filter(isVisible));
+      fitAll(true);
+      save();
+    }
+  }
+  arrangeAnimFrame=requestAnimationFrame(step);
 }
 
 /* ══════════════════════════ MODAIS DE NÓ ══════════════════════════ */
@@ -1182,16 +1269,39 @@ function enterPresentation(){
   viewport.querySelectorAll('.node.selected').forEach(n=>n.classList.remove('selected'));
   showPresentNode();
   try{document.documentElement.requestFullscreen();}catch(e){}
+  armPresentIdle();
 }
-function exitPresentation(){
+// sai do modo apresentação; por padrão também sai da tela cheia, a menos que keepFullscreen=true
+// (usado ao alcançar o último ponto da apresentação, para permanecer em tela cheia)
+function exitPresentation(keepFullscreen){
   presentationMode=false;
-  document.body.classList.remove('presenting');
+  document.body.classList.remove('presenting','ui-idle');
   document.getElementById('modeLabel').textContent='edição';
   document.getElementById('pcount').classList.remove('show');
   viewport.querySelectorAll('.node').forEach(n=>n.classList.remove('present-focus','present-dim'));
-  if(document.fullscreenElement){document.exitFullscreen().catch(()=>{});}
+  disarmPresentIdle();
+  if(!keepFullscreen && document.fullscreenElement){document.exitFullscreen().catch(()=>{});}
   fitAll();
 }
+
+/* ── ocultar automaticamente os controles/textos da apresentação quando o mouse fica parado ── */
+let presentIdleTimer=null;
+const PRESENT_IDLE_MS=2500;
+function armPresentIdle(){
+  disarmPresentIdle();
+  document.body.classList.remove('ui-idle');
+  presentIdleTimer=setTimeout(()=>{document.body.classList.add('ui-idle');},PRESENT_IDLE_MS);
+}
+function disarmPresentIdle(){
+  if(presentIdleTimer){clearTimeout(presentIdleTimer);presentIdleTimer=null;}
+}
+function wakePresentIdle(){
+  if(!presentationMode)return;
+  document.body.classList.remove('ui-idle');
+  armPresentIdle();
+}
+window.addEventListener('mousemove',wakePresentIdle);
+window.addEventListener('touchstart',wakePresentIdle,{passive:true});
 // mantém o estado sincronizado se a apresentação em tela cheia for encerrada por fora (Esc do navegador, etc.)
 document.addEventListener('fullscreenchange',()=>{
   if(!document.fullscreenElement && presentationMode)exitPresentation();
@@ -1206,9 +1316,14 @@ function showPresentNode(){
   document.getElementById('pcnt-text').textContent=(presentIdx+1)+' / '+presentOrder.length;
   document.getElementById('pprogress-bar').style.width=((presentIdx+1)/presentOrder.length*100)+'%';
   document.getElementById('pnav-prev').disabled=presentIdx===0;
-  document.getElementById('pnav-next').disabled=presentIdx===presentOrder.length-1;
+  const isLast=presentIdx===presentOrder.length-1;
+  document.getElementById('pnav-next').disabled=false;
+  document.getElementById('pnav-next').title=isLast?'Concluir apresentação':'Próximo (→)';
 }
-function advancePresent(){if(presentIdx<presentOrder.length-1){presentIdx++;showPresentNode();}}
+function advancePresent(){
+  if(presentIdx<presentOrder.length-1){presentIdx++;showPresentNode();}
+  else{exitPresentation(true);} // último ponto: sai do modo apresentação, mas permanece em tela cheia
+}
 function retreatPresent(){if(presentIdx>0){presentIdx--;showPresentNode();}}
 document.getElementById('btn-present-exit').onclick=exitPresentation;
 document.getElementById('pnav-prev').onclick=e=>{e.stopPropagation();retreatPresent();};
@@ -1361,14 +1476,14 @@ document.getElementById('btn-clear').onclick=()=>{
   if(!confirm('limpar toda a apresentação?'))return;
   nodes=[]; render(); save(); toast('apresentação limpa.');
 };
-document.getElementById('btn-arrange').onclick=()=>{closeCmd();layoutTree();render();fitAll();save();toast('nós organizados.');};
+document.getElementById('btn-arrange').onclick=()=>{closeCmd();arrangeNodes();toast('nós organizados.');};
 function updateDirUI(){
   document.getElementById('dir-label').innerHTML=(layoutDir==='lr'?'horizontal':'vertical')+' <kbd>D</kbd>';
   document.getElementById('dir-icon').innerHTML=layoutDir==='lr'?'<path d="M5 12h14M12 5l7 7-7 7"/>':'<path d="M12 5v14M5 12l7 7 7-7"/>';
 }
 document.getElementById('btn-dir').onclick=()=>{
   closeCmd(); layoutDir=layoutDir==='lr'?'td':'lr'; updateDirUI();
-  layoutTree(); render(); fitAll(); save(); toast('disposição: '+(layoutDir==='lr'?'horizontal':'vertical'));
+  arrangeNodes(); toast('disposição: '+(layoutDir==='lr'?'horizontal':'vertical'));
 };
 document.getElementById('btn-present').onclick=()=>{closeCmd();togglePresentation();};
 
@@ -1403,7 +1518,7 @@ document.addEventListener('keydown',e=>{
   if(k==='e'){const sel=viewport.querySelector('.node.selected'); if(sel)openEditModal(nodes.find(x=>x.id===sel.dataset.id)); return;}
   if(k==='s'){openSaveModal();return;}
   if(k==='l'){document.getElementById('flow-file-input').click();return;}
-  if(k==='o'){layoutTree();render();fitAll();save();toast('nós organizados.');return;}
+  if(k==='o'){arrangeNodes();toast('nós organizados.');return;}
   if(k==='p'){togglePresentation();return;}
   if(k==='g'){document.getElementById('btn-ai').click();return;}
   if(k==='d'){document.getElementById('btn-dir').click();return;}
