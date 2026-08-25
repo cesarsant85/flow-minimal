@@ -100,10 +100,33 @@ button,input,textarea{font-family:inherit;}
 
 /* ══════════════════════ WORKSPACE ══════════════════════ */
 #workspace{width:100%;height:100%;position:relative;overflow:hidden;background:var(--canvas);
-  background-image:radial-gradient(circle,var(--dot-grid) 1.2px,transparent 0);
-  background-size:calc(30px*var(--font-scale)) calc(30px*var(--font-scale));
   touch-action:none; cursor:grab; transition:background .35s;}
 #workspace.panning{cursor:grabbing;}
+
+/* ── Padrões de fundo ── */
+#workspace[data-bgpattern="dots"]{
+  background-image:radial-gradient(circle,var(--dot-grid) 1.2px,transparent 0);
+  background-size:calc(30px*var(--font-scale)) calc(30px*var(--font-scale));
+}
+#workspace[data-bgpattern="grid"]{
+  background-image:
+    linear-gradient(var(--dot-grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--dot-grid) 1px,transparent 1px);
+  background-size:calc(30px*var(--font-scale)) calc(30px*var(--font-scale));
+}
+#workspace[data-bgpattern="blueprint"]{
+  background-image:
+    linear-gradient(var(--dot-grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--dot-grid) 1px,transparent 1px),
+    linear-gradient(rgba(var(--accent-rgb),.16) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(var(--accent-rgb),.16) 1px,transparent 1px);
+  background-size:
+    calc(30px*var(--font-scale)) calc(30px*var(--font-scale)),
+    calc(30px*var(--font-scale)) calc(30px*var(--font-scale)),
+    calc(150px*var(--font-scale)) calc(150px*var(--font-scale)),
+    calc(150px*var(--font-scale)) calc(150px*var(--font-scale));
+}
+#workspace[data-bgpattern="none"]{background-image:none;}
 #viewport{position:absolute;inset:0;transform-origin:0 0;will-change:transform;}
 #connections{position:absolute;inset:0;overflow:visible;pointer-events:none;}
 
@@ -603,6 +626,16 @@ body.presenting #btn-present-exit{display:flex;}
     <div class="mf">
       <label>Paleta de cores dos ramos</label>
       <div class="opt-row" id="palette-row"></div>
+    </div>
+
+    <div class="mf">
+      <label>Padrão de fundo</label>
+      <div class="opt-row">
+        <button class="theme-opt" data-bgpattern="dots">pontos</button>
+        <button class="theme-opt" data-bgpattern="grid">grade</button>
+        <button class="theme-opt" data-bgpattern="blueprint">blueprint</button>
+        <button class="theme-opt" data-bgpattern="none">nenhum</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1436,7 +1469,14 @@ function setTheme(id){
   document.querySelectorAll('.theme-opt').forEach(b=>b.classList.toggle('active',b.dataset.theme===id));
   localStorage.setItem('flow_theme',id);
 }
-document.querySelectorAll('.theme-opt').forEach(b=>b.addEventListener('click',()=>setTheme(b.dataset.theme)));
+document.querySelectorAll('.theme-opt[data-theme]').forEach(b=>b.addEventListener('click',()=>setTheme(b.dataset.theme)));
+
+function setBgPattern(id){
+  workspace.setAttribute('data-bgpattern',id);
+  document.querySelectorAll('.theme-opt[data-bgpattern]').forEach(b=>b.classList.toggle('active',b.dataset.bgpattern===id));
+  localStorage.setItem('flow_bgpattern',id);
+}
+document.querySelectorAll('.theme-opt[data-bgpattern]').forEach(b=>b.addEventListener('click',()=>setBgPattern(b.dataset.bgpattern)));
 
 function setProj(brightness,contrast,scale){
   document.documentElement.style.setProperty('--proj-brightness',(brightness/100).toFixed(2));
@@ -1458,7 +1498,9 @@ document.getElementById('reset-proj').onclick=()=>setProj(100,100,100);
 function loadTheme(){
   const theme=localStorage.getItem('flow_theme')||'dark';
   const palette=localStorage.getItem('flow_palette')||'signal';
+  const bgpattern=localStorage.getItem('flow_bgpattern')||'dots';
   setTheme(theme); document.documentElement.setAttribute('data-palette',palette);
+  setBgPattern(bgpattern);
   let proj={brightness:100,contrast:100,scale:100};
   try{const raw=localStorage.getItem('flow_proj'); if(raw)proj=JSON.parse(raw);}catch(e){}
   setProj(proj.brightness,proj.contrast,proj.scale);
